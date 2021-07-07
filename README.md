@@ -9,4 +9,4 @@ https://www.metayota.com/page/documentation-metayota-html-engine
 https://www.metayota.com/documentation
 
 # METAYOTA LLC company website
-https://www.metayota.com/documentation
+https://www.metayota.com/
