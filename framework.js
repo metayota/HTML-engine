@@ -1,4 +1,4 @@
-class Subscriptions {
+class Subscriptions { 
     constructor() {
         this.subscriptions = {};
         this.subscribers = [];
@@ -6,7 +6,7 @@ class Subscriptions {
     static getMainSubscription() {
         return this.mainSubscription;
     }
-    subscribe(method, objectPath = []) { 
+    subscribe(method, objectPath = []) {
         if (objectPath.length == 0) {
             this.subscribers.push(method);
             return this;
@@ -74,7 +74,7 @@ class BrowserElementSubscription {
         this.subscription = subscribe(subscription, this);
     }
     changed() {
-        this.attribute.renderAttribute(this.browserElement, {tag:this.browserElement.tag});
+        this.attribute.renderAttribute(this.browserElement, { tag: this.browserElement.tag });
     }
     destroy() {
         this.subscription.unsubscribe(this);
@@ -134,10 +134,12 @@ class BrowserElement {
         el.remove();
     }
     replaceElement(withEl) {
-        if (this.node.parentNode) {
-            this.node.parentNode.insertBefore(withEl, this.node.nextSibling)
+        if (this.node) {
+            if (this.node.parentNode) {
+                this.node.parentNode.insertBefore(withEl, this.node); // Insert BEFORE not after
+            }
+            this.node.remove()
         }
-        this.node.remove()
         this.node = withEl
     }
     render(options) {
@@ -152,13 +154,15 @@ class BrowserElement {
     destroySubitems() {
         if (this.children != null) {
             for (let child of this.children) {
-                child.destroy(false);
+                if (child != undefined) { //why undefined?
+                    child.destroy(false);
+                }
             }
         }
         this.children = [];
     }
     destroy(withNode = true) {
-        
+
         this.destroySubitems();
         if (withNode && this.node) {
             this.node.remove();
@@ -181,7 +185,7 @@ class BrowserElement {
                 boundAttribute.unsubscribe(this);
             }
         }
-            
+
         if (this.ownsTag !== undefined) {
             this.ownsTag.destroy(); // ownsTag destroy the tag (include tag)
             // here is a bug for the include tag (gets destroyed)
@@ -219,6 +223,7 @@ class ModelElement {
                 let attrib = attribs[i];
                 //if (!Attribute.attributeTypeNames.some( v => v == attrib.name)) continue;
                 if (node.nodeName == 'LABEL' && attrib.name == 'for') continue;
+
                 let attribute = Attribute.parseAttribute(this.modelNode, attrib.name, attrib.value, options);
                 if (attribute !== null) {
                     this.attributes.push(attribute);
@@ -293,6 +298,7 @@ class ModelElement {
         }
     }
     renderAttributes(browserElement, options) {
+        options.render = true
         for (let attribute of this.attributes) {
             if (options.render !== false) {
                 attribute.renderAttribute(browserElement, options);
@@ -301,9 +307,9 @@ class ModelElement {
     }
     renderChildren(browserElement, options) { //should also render children when it has no node..
         if (options.render !== false && options.renderChildren !== false) {
-            if (browserElement.node && browserElement.node.nodeType == 1) {
+            if (browserElement.node && (browserElement.node.nodeType == 1 || browserElement.node.nodeType == 11)) {
                 if (this.children.length > 0) {
-                    const childElements = Array.from(browserElement.node.getElementsByTagName('child'));
+                    const childElements = Array.from(browserElement.node.querySelectorAll('child'));
                     for (let i = childElements.length - 1; i >= 0; i--) {
                         let childElement = childElements[i];
                         let childBrowserEl = this.children[childElement.getAttribute('i')].render(Object.assign({}, options), null);
@@ -428,7 +434,12 @@ class ModelElement {
         if (!this.parseTag(node, options)) {
             this.modelNode = node.cloneNode(false);
             this.parseAttributes(node, options);
-            this.parseChildren(node, options);
+
+            let newOptions = Object.assign(options)
+            if (newOptions.aliases != undefined) {
+                newOptions.aliases = Array.from(options.aliases)
+            }
+            this.parseChildren(node, newOptions);
         }
     }
     updateChildren(browserElement, options) {
@@ -474,7 +485,10 @@ class ModelElement {
             }
         }
         if (browserElement) {
-            browserElement.tag = options.tag;
+            //browserElement.tag = options.tag;
+            if (!browserElement.ownsTag) {
+                browserElement.tag = options.tag;
+            }
             browserElement.forIdx = Object.assign({}, browserElement.forIdx, options.forIdx); // todo: set on model element, if forIdx is needed
             browserElement.modelElement = this;
             if (options.renderAttributes !== false) {
@@ -601,7 +615,7 @@ class TagModel {
                 if (tag.parentTag) {
                     tag.parentTag.subscribeTagAttribute(subscriptionName, expressionParam.path, tag, expression)
                 } else {
-                    console.warn('Tag parentTag is not defined',tag)
+                    console.warn('Tag parentTag is not defined', tag)
                 }
             }
         }
@@ -617,7 +631,7 @@ class TagModel {
                 if (tag.parentTag) {
                     tag.parentTag.unsubscribeTagAttribute(subscription, expressionParam.path, tag)
                 } else {
-                    console.warn('Tag parentTag is not defined',tag)
+                    console.warn('Tag parentTag is not defined', tag)
                 }
             }
         }
@@ -636,30 +650,60 @@ class TagModel {
         return browserElement;
     }
 }
-
-class JJResourceObject {
-    call(parameters) {
-        return Tag.callJson(this.name, parameters)
+class GlobalResource {
+    static call(name, parameters = null, useGet = false) {
+        return Resource.action(name, null, parameters, useGet) //Tag.callJson(name, parameters)
     }
-    action(action, parameters = null) {
-        return JJResource.action(this.name, action, parameters)
+    static action(name, action, parameters = null, useGet = false) {
+        return Resource.action(name, action, parameters, useGet)
     }
 }
-class JJResource {
-    static loadDependencies(dependencies) {
+class ResourceObject {
+    post(action = undefined, parameters = {}) {
+        if (typeof action == 'object') {
+            return this.call(action, false)
+        } else if (action == undefined) {
+            return this.call(parameters, false)
+        } else {
+            return this.action(action, parameters, false)
+        }
+    }
+    get(action = undefined, parameters = {}) {
+        if (typeof action == 'object') {
+            return this.call(action, true)
+        } else if (action == undefined) { //doesn't really work like this
+            return this.call(parameters, true)
+        } else {
+            return this.action(action, parameters, true)
+        }
+    }
+    getData() {
+        return Resource.getResource(this.name).data
+    }
+    action(action, parameters = null, useGET = false,responseType='json') {
+        return Resource.action(this.name, action, parameters, useGET,responseType)
+    }
+    /** deprecated */
+    call(parameters, useGET = false) {
+        return Resource.action(this.name, null, parameters, useGET)
+    }
+}
+class Resource {
+    static loadDependencies(dependencies, server = false) {
         if (!dependencies) {
             return Promise.resolve(true)
         }
         let promises = []
         for (let dependency of dependencies) {
             let ready = true
+            let nameToLoad = server ? 'server:' + dependency.name : dependency.name
             if (dependency.type == 'object' || dependency.type == 'dbtable' || dependency.type == 'validator') {
-                ready = JJResource.registerAndLoad(dependency.name)
+                ready = Resource.registerAndLoad(nameToLoad)
             } else if (dependency.type == 'tag') {
                 if (!Tag.isRegistered(dependency.name)) {
-                    ready = Tag.registerAndLoad(dependency.name)
+                    ready = Tag.registerAndLoad(nameToLoad)
                 } else if (!Tag.isReady(dependency.name)) {
-                    ready = JJResource.loaded(dependency.name)//Tag.ready(dependency.name)
+                    ready = Resource.loaded(dependency.name)//Tag.ready(dependency.name)
                 }
             }
             if (ready !== true) {
@@ -677,122 +721,268 @@ class JJResource {
     static evalJavaScript(script, resource) {
         return eval('(' + script + ')');
     }
-    static loadedJson(name,json,resolvePromise) {
-        Object.assign(JJResource.resources[name], json)
-        JJResource.loadDependencies(json.dependencies).then(result => {
-            let resource = JJResource.resources[name]
+    static loadedJson(name, json, resolvePromise) {
+        Object.assign(Resource.resources[name], json)
+        Resource.loadDependencies(json.dependencies, name.startsWith('server:')).then(result => {
+            let resource = Resource.resources[name]
             if (resource.implementation) {
                 if (resource.implementation.javascript != undefined && resource.implementation.javascript != '') {
                     try {
-                        
-
-                        resource.classObj = JJResource.evalJavaScript(resource.implementation.javascript, resource)
-                        let classNames = JJResource.classRegex.exec(resource.implementation.javascript)
+                        resource.classObj = Resource.evalJavaScript(resource.implementation.javascript, resource)
+                        let classNames = Resource.classRegex.exec(resource.implementation.javascript)
                         window[classNames[1]] = resource.classObj
-                    } catch(error) {
-                        console.error('Error in resource name:',name,error)
+                        if (resource.data) {
+                            Object.assign(window[classNames[1]], resource.data)
+                        }
+                    } catch (error) {
+                        let resname = name.startsWith('server:') ? name.substr(7) : name;
+                        handleError(resname,error.message,{tab:'javascript', line:error.lineNumber})
                     }
                 }
             }
-            resource.status = 'ready'
-            //resource.ready = true
-            
             let waitingResolved = false
             if (resource.classObj != undefined && resource.classObj.initialize != undefined) {
-                
+
                 let initializeResult = resource.classObj.initialize()
                 if (typeof initializeResult === 'object') {
                     waitingResolved = true
-                    initializeResult.then( initResult => {
-                        JJResource.resolveWaiting(resource, resolvePromise)
+                    initializeResult.then(initResult => {
+                        resource.status = 'ready'
+                        Resource.resolveWaiting(resource, resolvePromise)
                     })
-                }  
+                } else {
+                    resource.status = 'ready'
+                }
+            } else {
+                resource.status = 'ready'
             }
             if (!waitingResolved) {
-                JJResource.resolveWaiting(resource, resolvePromise)
+                Resource.resolveWaiting(resource, resolvePromise)
             }
             return true
         });
     }
+    static appendToAllRequests(obj) {
+        Resource.alwaysAppend = obj;
+    }
+    static addResourcePack(resources) {
+        Object.keys(resources).forEach(resourceKey => {
+            let resourceName = resources[resourceKey].name
+            let resObj = new ResourceObject()
+            resObj.name = resourceName
+            resObj.status = 'downloading'
+            resObj.onload = []
+            Resource.resources[resourceName] = resObj
+            Tag.tags[resourceName] = { ready: false }
+        })
+        Object.keys(resources).forEach(resourceKey => {
+            let resource = resources[resourceKey]
+            Resource.loadedJson(resource.name, resource, undefined)
+        })
+    }
+    static loadPack(resourceNames) {
+        return Resource.action('metayota', 'resource_pack', { 'resources': resourceNames }, true).then(resources => {
+            Resource.addResourcePack(resources)
+        })
+    }
     static registerAndLoad(name) {
-        if (JJResource.resources[name] === undefined) {
-            let resObj = new JJResourceObject()
+        if (Resource.resources[name] === undefined) {
+            let resObj = new ResourceObject()
             resObj.name = name
             resObj.status = 'downloading'
             resObj.onload = []
             let self = this
-            //{ status: 'downloading', onload: [] }
-            JJResource.resources[name] = resObj
-            let url = '/resource/' + name + '.json'
+            Resource.resources[name] = resObj
+            let scriptsPath = Resource.scriptsPath ? Resource.scriptsPath : '/wp-content/plugins/metayota/scripts/'
+            let url = Resource.wp !== true ? '/resource/' + name + '.json' : scriptsPath + 'metayota/resource.php?name='+name+'&output=json'
+            if (Resource.alwaysAppend != undefined) {
+                let queryStr = Resource.objectToQueryString(Resource.alwaysAppend);
+                if (url.includes("?")) {
+                    url += "&" + queryStr
+                } else {
+                    url += "?" + queryStr
+                }
+            }
             return new Promise(function (resolvePromise, reject) {
                 let sessionItem = null;
-                if (window.cacheEnabled$ === true) {
-                    sessionStorage.getItem('resource_'+name)
+                if (window.cacheEnabled$ === true && false) {
+                    sessionStorage.getItem('resource_' + name)
                 }
                 if (sessionItem) {
                     try {
-                        JJResource.loadedJson(name,JSON.parse(sessionItem),resolvePromise)
-                    } catch(error) {
+                        Resource.loadedJson(name, JSON.parse(sessionItem), resolvePromise)
+                    } catch (error) {
                         console.error('Could not load tag ' + name, error)
                     }
                 } else {
 
                     fetch(url, { credentials: "include" })
-                        .then( result => result.text())
-                        .then( result => {
-                            sessionStorage.setItem('resource_'+name,result)
+                        .then(result => {
+                            
+                            if (result.status == 403) {
+                                let resname = name.startsWith('server:') ? name.substr(7) : name;
+                                handleError(resname,'HTTP 403 - No access to view this resource.', {highlight:'tag'},'access')
+                            }
+                            return result.text()
+                        })
+                        .then(result => {
+                            if (window.cacheEnabled$ === true && false) {
+                                sessionStorage.setItem('resource_' + name, result)
+                            }
                             return JSON.parse(result)
                         })
                         .then(json => {
-                            JJResource.loadedJson(name,json,resolvePromise)
+                            Resource.loadedJson(name, json, resolvePromise)
                         }).catch(error => {
+                            if (error.error != undefined) {
+                                alert(error.error);
+                            }
                             console.error("Could not include ", name, error)
                         })
-                    }
+                }
             });
         }
-        return Promise.resolve(JJResource.resources[name]) // should not return 2 different types
+        return Promise.resolve(Resource.resources[name]) // should not return 2 different types
     }
-    
-    static resolveWaiting(resource,resolvePromise) {
+
+    static resolveWaiting(resource, resolvePromise) {
         let onload = resource.onload
         for (let loadFn of onload) {
             loadFn(resource)
         }
-        resolvePromise(resource) 
+        if (resolvePromise != undefined) {
+            resolvePromise(resource)
+        }
         return resource
     }
-    static callWithJSON(postData) {
-        let callURL = "/resource-manager/call.php"
-        if (postData.action) {
-            callURL = "/call/"+postData.resource+"/"+postData.action;
+    static callWithJSON(postData, useGET = false) {
+        let callURL = ""
+        if (Resource.wp === true) {
+            let scriptsPath = Resource.scriptsPath ? Resource.scriptsPath : '/wp-content/plugins/metayota/scripts/'
+            if (postData.action) {
+                callURL = scriptsPath + postData.resource + "/" + postData.action + ".php";
+            } else {
+                callURL = scriptsPath + postData.resource + "/" + postData.resource + ".php"
+            }
         } else {
-            callURL = "/call/"+postData.resource
+            if (postData.action) {
+                callURL = "/call/" + postData.resource + "/" + postData.action;
+            } else {
+                callURL = "/call/" + postData.resource
+            }
         }
-        return fetch(callURL, {
-            method: "POST",
-            body: JSON.stringify(postData.data),
-            headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'Content-Type': 'application/json'
-            },
-            credentials: 'include'
-        })
+
+        if (useGET) {
+            let sendData = postData.data
+            if (Resource.alwaysAppend != undefined) {
+                sendData = Object.assign({}, sendData, Resource.alwaysAppend)
+            }
+            let queryStr = Resource.objectToQueryString(sendData);
+            if (queryStr.length > 0) {
+                if (callURL.includes("?")) {
+                    callURL += "&" + queryStr
+                } else {
+                    callURL += "?" + queryStr
+                }
+            }
+            return fetch(callURL, {
+                method: "GET",
+                headers: {
+                    'Accept': 'application/json, text/plain, */*'
+                },
+                credentials: 'include'
+            });
+        } else {
+            let fetchURL = callURL
+            if (Resource.alwaysAppend != undefined) {
+                if (callURL.includes('?')) {
+                    fetchURL += '&' + Resource.objectToQueryString(Resource.alwaysAppend);
+                } else {
+                    fetchURL += '?' + Resource.objectToQueryString(Resource.alwaysAppend);
+                }
+            }
+            return fetch(fetchURL, {
+                method: "POST",
+                body: JSON.stringify(postData.data),
+                headers: {
+                    'Accept': 'application/json, text/plain, */*',
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            })
+        }
     }
     static callText(resource, action, parameters = null) {
         let postData = { "resource": resource, action: action, data: parameters ? parameters : null }
-        return JJResource.callWithJSON(postData).then( res => res.text() ) // todo catch
+        return Resource.callWithJSON(postData).then(res => res.text()) // todo catch
     }
-    static action(resource, action, parameters = null) {
+    static objectToQueryString(obj, prefix = '') {
+        const queryString = [];
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const value = obj[key];
+                if (value != undefined) {
+                    const encodedKey = encodeURIComponent(key);
+                    const prefixedKey = prefix ? `${prefix}[${encodedKey}]` : encodedKey;
+                    if (typeof value === 'object' && !Array.isArray(value)) {
+                        const nestedQueryString = Resource.objectToQueryString(value, prefixedKey);
+                        queryString.push(nestedQueryString);
+                    } else if (Array.isArray(value)) {
+                        value.forEach(item => {
+                            const encodedValue = encodeURIComponent(item);
+                            queryString.push(`${prefixedKey}[]=${encodedValue}`);
+                        });
+                    } else {
+                        const encodedValue = encodeURIComponent(value);
+                        queryString.push(`${prefixedKey}=${encodedValue}`);
+                    }
+                }
+            }
+        }
+        return queryString.join('&');
+    }
+    static action(resource, action, parameters = null, useGET = false,responseContentType='json') {
         let postData = { "resource": resource, action: action, data: parameters ? parameters : null }
-        return JJResource.callWithJSON(postData).then((res) => {
-            return res.json();
+        return Resource.callWithJSON(postData, useGET).then((res) => {
+            if (res.status == 403) {
+                // let resname = resource.startsWith('server:') ? name.substr(7) : name;
+                let json = res.json()
+                json.then(result=>{
+                    let highlight = result.highlight ? result.highlight : 'php';
+                    let msg = result.message ? result.message : '403 - No Access - You have no access to make server calls to the resource '+resource;
+                    let resourceA = result.resource ? result.resource : resource
+                    handleError(resourceA,msg,{highlight},'access');
+                }).catch(result=> {
+                    handleError(resource,'403 - No Access - You have no access to make server calls to the resource '+resource,{highlight:'php'},'access')
+                })
+                return json;
+            }
+            if (res.status == 500) {
+                let json = res.json();
+                json.then(jsonResult => {
+                    handleError(jsonResult.resource,'500 - Error in server call ' + jsonResult.resource + '!',{line:jsonResult.line,tab:jsonResult.tab+'.php'})
+                })
+                return json;
+            }
+            if (responseContentType == 'json') {
+                return res.json()
+            }
+            if (responseContentType == 'blob') {
+                return res.blob()
+            }
+            if (responseContentType == 'text') {
+                return res.text()
+            }
         }).catch((error) => {
             console.error(resource, error)
         });
     }
-    static create(name, params = {}) {
-        let resource = JJResource.resources[name]
+    static createWithDefaults(name) {
+        let resource = Resource.resources[name]
+        return Object.assign({}, resource.configuration)        
+    }
+    static create(name, params = {}) { // At the moment not used
+        let resource = Resource.resources[name]
         let cls = resource.classObj
         if (cls === undefined) {
             return params // params
@@ -802,7 +992,7 @@ class JJResource {
         return newObj
     }
     static ready(name) {
-        let obj = JJResource.resources[name];
+        let obj = Resource.resources[name];
         if (obj) {
             if (obj.status == 'downloading') {
                 return false
@@ -812,7 +1002,7 @@ class JJResource {
         return false;
     }
     static loaded(name) {
-        let obj = JJResource.resources[name];
+        let obj = Resource.resources[name];
         if (obj) {
             if (obj.status == 'downloading') {
                 return new Promise(function (resolve) {
@@ -821,22 +1011,22 @@ class JJResource {
             }
             return Promise.resolve(obj);
         } else {
-            return JJResource.registerAndLoad(name)
+            return Resource.registerAndLoad(name)
         }
     }
-    
+
     static getResource(name) {
-        return JJResource.resources[name]
+        return Resource.resources[name]
     }
     static cls(name) {
-        return JJResource.resources[name].classObj
+        return Resource.resources[name].classObj
     }
     static call(funcName, parameters) {
-        return JJResource.action(funcName, null, parameters)
+        return Resource.action(funcName, null, parameters)
     }
 }
-JJResource.resources = {}
-JJResource.classRegex = /class ([a-zA-Z]*)/
+Resource.resources = {}
+Resource.classRegex = /class ([a-zA-Z]*)/
 class Tag {
     constructor() {
         this._subscriptions = new Map();
@@ -844,9 +1034,9 @@ class Tag {
     get subscriptions() {
         return this._subscriptions;
     }
-	set subscriptions(s) {
-		this._subscriptions = s
-	}
+    set subscriptions(s) {
+        this._subscriptions = s
+    }
     setup() { }
     init() { }
     ready() { }
@@ -855,14 +1045,14 @@ class Tag {
     }
     static load(url) {
         if (Tag.loaded[url] === undefined) {
-            let loadingInfo = { url: url, promises:[] }
+            let loadingInfo = { url: url, promises: [] }
             Tag.loaded[url] = loadingInfo
             var script = document.createElement("script");
             script.type = 'text/javascript'
             script.src = url
-            script.onload = function() {
+            script.onload = function () {
                 loadingInfo.loaded = true
-                for(let promiseResolveFn of loadingInfo.promises) {
+                for (let promiseResolveFn of loadingInfo.promises) {
                     promiseResolveFn(true);
                 }
             }
@@ -871,12 +1061,12 @@ class Tag {
         let loadingInfo = Tag.loaded[url];
         if (loadingInfo.loaded == true) {
             return Promise.resolve(true)
-        } 
+        }
 
         let loadPromise = new Promise(function (resolve) {
             loadingInfo.promises.push(resolve)
         });
-    
+
         return loadPromise
     }
     get tagName() {
@@ -886,10 +1076,10 @@ class Tag {
         return Tag.call(funcName, parameters)
     }
     callJson(resource, parameters) {
-        return JJResource.action(resource, null, parameters)
+        return Resource.action(resource, null, parameters)
     }
     static callJson(resource, parameters) {
-        return JJResource.action(resource, null, parameters)
+        return Resource.action(resource, null, parameters)
     }
     static call(funcName, parameters) {
         return Tag.callJson(funcName, parameters);
@@ -903,7 +1093,9 @@ class Tag {
             }
             let expression2 = this.tagModel.events['event'];
             if (expression2 !== undefined) {
-                expression2.callWithTagAndElementAndEvent(this.parentTag, this, { eventname, event })
+                if (this.parentTag) {
+                    expression2.callWithTagAndElementAndEvent(this.parentTag, this, { eventname, event })
+                }
             }
         }
 
@@ -925,20 +1117,28 @@ class Tag {
                     tagData.classObj = resource.classObj
                     // tagData.classObj = eval('(' + implementation.javascript + ')');
                     tagData.classObj.bind(resource)
-                    let classNames = JJResource.classRegex.exec(implementation.javascript)
+                    let classNames = Resource.classRegex.exec(implementation.javascript)
                     window[classNames[1]] = tagData.classObj
                 } catch (error) {
-                    console.error('Tag "' + tagname + '" (implementation.javascript) could not be parsed:',tagData, error)
+                    console.error('Tag "' + tagname + '" (implementation.javascript) could not be parsed:', tagData, error)
                     // link to bug, ?editor=resource=tagname&tab=implementation/javacript
                 }
             }
             if (implementation.html !== undefined && implementation.html != '') {
                 let domparser = new DOMParser();
-                let tagEl = document.createElement('div')
-                tagEl.innerHTML = implementation.html
+                let tagEl = document.createElement('template');
+                tagEl.innerHTML = implementation.html;
+
+                if (tagEl.content.childNodes.length > 1) {
+                    let wrapper = document.createElement('div');
+                    while (tagEl.content.firstChild) {
+                        wrapper.appendChild(tagEl.content.firstChild);
+                    }
+                    tagEl.content.appendChild(wrapper);
+                }
 
                 let modelElement = new ModelElement();
-                let modelBrowserElement = (tagEl.children.length > 1) ? tagEl : tagEl.firstElementChild
+                let modelBrowserElement = (tagEl.content.childNodes.length > 1) ? tagEl.content : tagEl.content.firstElementChild
                 modelElement.parse(modelBrowserElement, {});
                 Tag.tags[tagname].modelElement = modelElement;
             }
@@ -960,7 +1160,7 @@ class Tag {
         if (Tag.tags[tagname] == undefined) {
             Tag.tags[tagname] = { ready: false }
         }
-        return JJResource.loaded(tagname).then(resource => {
+        return Resource.loaded(tagname).then(resource => {
             if (!Tag.tags[tagname].ready) {
                 return Tag.parseModelTag(resource, Tag.tags[tagname], tagname)
             } else {
@@ -1004,8 +1204,8 @@ class Tag {
     }
     static clear(tagname) {
         Tag.tags[tagname] = undefined
-        JJResource.resources[tagname] = undefined
-        sessionStorage.removeItem('resource_'+tagname)
+        Resource.resources[tagname] = undefined
+        sessionStorage.removeItem('resource_' + tagname)
     }
     static register(tagname) {
         if (!Tag.tags[tagname]) {
@@ -1015,7 +1215,7 @@ class Tag {
     }
     static registerAndLoad(tagname) {
         Tag.tags[tagname] = { ready: false }
-        return JJResource.loaded(tagname).then(resource => {
+        return Resource.loaded(tagname).then(resource => {
             if (!Tag.tags[tagname].ready) {
                 Tag.tags[tagname] = resource
             }
@@ -1029,7 +1229,7 @@ class Tag {
         Tag.tags[tagname] = { classObj: classObj, ready: true };
     }
     publish(varname, object) {
-        Tag.publish(varname, object) 
+        Tag.publish(varname, object)
     }
     static publish(varname, object) {
         window[varname] = object;
@@ -1080,15 +1280,16 @@ class Tag {
             }
         }
     }
+
     updateItem(name, index) {
         this.update(name + '[' + index + ']')
     }
     updateAppended(name) {
         this.update(name + '.length')
     }
-    setAttribute(name,value) {
+    setAttribute(name, value) {
         this[name] = value
-        this.update('this.'+name)
+        this.update('this.' + name)
     }
     update(name) { // Todo: use a local subscriptions object here?
         name = name.replace(/this/g, 'tag'); //bug, tag name will be replaced regex
@@ -1098,7 +1299,7 @@ class Tag {
             }
             let subscriptionKeys = this.subscriptions.keys()
             for (let subscriptionName of subscriptionKeys) {
-                if (subscriptionName.startsWith(name)) {
+                if (name.startsWith(subscriptionName + '.') || subscriptionName.startsWith(name) || name == subscriptionName) { //?
 
                     let subscriptions = this.subscriptions.get(subscriptionName);
                     for (let subscriptionPath in subscriptions) {
@@ -1168,8 +1369,8 @@ class Expression {
                 definitions += 'let ' + alias.varname + " = " + alias.expression + "\n"
             }
         }
-		if (options.tagAndvalue) {
-			code = '(function(tag,value) { ' + definitions + ' ' + this.expression + ' })';
+        if (options.tagAndvalue) {
+            code = '(function(tag,value) { ' + definitions + ' ' + this.expression + ' })';
         } else if (options.returnVoid) {
             code = '(function(element,node,tag,event) { ' + definitions + ' ' + this.expression + ' })';
         } else {
@@ -1185,11 +1386,13 @@ class Expression {
     parseSubscriptions(expression) {
         let expressionParts = matchAll(expression);
         for (let expressionPart of expressionParts) {
-            if (expressionPart.startsWith('tag.')) {
-                this.tagSubscriptions.push(expressionPart);
+            if (expressionPart.startsWith('tag.') || expressionPart.startsWith('this.')) {
+                this.tagSubscriptions.push(expressionPart.replace('this.','tag.'));
             } else if (expressionPart.indexOf('$') != -1) {
                 this.subscriptions.push(expressionPart);
-            }
+            } /*else {
+                this.subscriptions.push(expressionPart) // maybe recoginize other selectors like {myvar.subvar}
+            } NOT SURE IF THIS IS REQUIRED*/
         }
     }
     getTagSubscriptions(options) {
@@ -1223,12 +1426,12 @@ class Expression {
     }
     static processJscontext(expr, options) {
         if (!expr.startsWith('{') && !expr.startsWith('[')) {//?
-        
+
             expr = expr.replace(/ and /g, ' && ');
             expr = expr.replace(/ or /g, ' || ');
             expr = expr.replace(/ then /g, ' && ');
-            expr = expr.replace(/this/g, 'tag');
         }
+        expr = expr.replace(/this/g, 'tag'); // SHOULD ACTUALLY ONLY REPLACE AT BEGINNING OF IDENTIFIERS 
         return expr;
     }
     static convertToJavaScript(expression, options, addSubscriptions = null) {
@@ -1241,8 +1444,8 @@ class Expression {
         for (let i = 0; i < js.length; i++) {
             let char = js[i];
             /*if (jsContext === 0 && ((char === ' ' && lastchar === ' ') || char === '\n' || char === '\t' || char === '\r')) {
-            	lastchar = ' '
-            	continue
+                lastchar = ' '
+                continue
             }*/
             if (jsContext === 0) lastchar = char;
             if (char === '{') {
@@ -1306,22 +1509,24 @@ class Expression {
         try {
             return this.fn(element, element.node, element.tag, null);
         } catch (error) {
-            console.error( (element.tag ? element.tag.tagModel.tagName : '?') +' - Error in Expression: "' + this.originalExpression + '" ' + error, (element ? element.tag : null), this.expression)
+            let resname = element.tag.tagModel.tagName;
+            let codepoint = this.originalExpression.replace("tag.", "this.").trim()
+            handleError(resname,error.message,{tab:'html', codepoint:codepoint})
             return false
         }
     }
     callWithTag(tag) {
         return this.fn(null, null, tag, null);
     }
-	callWithTagAndValue(tag,value) {
-		return this.fn(tag,value)
-	}
+    callWithTagAndValue(tag, value) {
+        return this.fn(tag, value)
+    }
     callWithTagAndElement(tag, element) {
         try {
             return this.fn(element, null, tag, null);
         } catch (error) {
 
-            console.error( (tag ? tag.tagModel.tagName : '') + 'callWithTagAndElement - error', 'expression', this.originalExpression, error, 'tag:', tag, 'element:', element, this)
+            console.error((tag ? tag.tagModel.tagName : '') + 'callWithTagAndElement - error', 'expression', this.originalExpression, error, 'tag:', tag, 'element:', element, this)
             return false
         }
     }
@@ -1329,7 +1534,10 @@ class Expression {
         try {
             return this.fn(element, null, tag, event);
         } catch (error) {
-            console.error( (tag ? tag.name : '') +  'callWithTagAndElementAndEvent - error', 'expression', this.originalExpression, error, 'tag:', tag, 'element:', element, this)
+
+            let resname = tag.tagModel.tagName;
+            let codepoint = this.originalExpression.replace("tag.", "this.").trim()
+            handleError(resname,error.message, {tab:'html',codepoint:codepoint})
             return true
         }
     }
@@ -1337,7 +1545,7 @@ class Expression {
         try {
             return this.fn(element, element.node, tag, event);
         } catch (error) {
-            console.error( (tag ? tag.name : '') +  'callWithTagAndElementAndEvent - error', 'expression', this.originalExpression, error, 'tag:', tag, 'element:', element, this)
+            handleError(tag.name,error.message, {tab:'html',codepoint:this.originalExpression.replace("tag","this")})
             return false
         }
     }
@@ -1405,7 +1613,7 @@ class Attribute {
             } else {
                 value = this.value
             }
-            if (!value) {
+            if (value === false || value === undefined) {
                 value = ''
             }
             this.render(browserElement.node, value, browserElement)
@@ -1423,12 +1631,19 @@ Attribute.attributeTypes = {};
 class ExpressionAttribute extends Attribute {
     render(node, value) {
         if (node) {
-            if (value) {
-                if (node.setAttribute) {
+
+            if (node.setAttribute) {
+                if (this.name == 'value') {
+                    node.value = value
+                } else {
                     node.setAttribute(this.name, value);
                 }
-            } else {
-                node.removeAttribute(this.name);
+            }
+
+            if (!value) {
+                if (node.removeAttribute != undefined) {
+                    node.removeAttribute(this.name);
+                }
             }
         }
     }
@@ -1448,10 +1663,16 @@ class EventAttribute extends Attribute {
     subscribe(element) {
         //should save event on element...to destroy when browser element is destroyed?
         let onEvent = function (event) {
-            if (this.eventAttribute.fn == undefined) {
-                this.eventAttribute.fn = eval(this.eventAttribute.code);
+            try {
+                if (this.eventAttribute.fn == undefined) {
+                    this.eventAttribute.fn = eval(this.eventAttribute.code);
+                }
+                this.eventAttribute.fn(this.element, this.element.node, this.element.tag, event)
+            } catch (error) {
+                let resname = this.element.tag.tagName;
+                let codepoint = this.eventAttribute.name + '="' + this.eventAttribute.value + '"';
+                handleError(resname,error.message, {tab:'html',codepoint:codepoint})
             }
-            this.eventAttribute.fn(this.element, this.element.node, this.element.tag, event)
         }.bind({ element: element, eventAttribute: this });
 
         element.node.addEventListener(this.eventName, onEvent);
@@ -1462,12 +1683,12 @@ class EventAttribute extends Attribute {
     destroy() {
         this.expression = null;
     }
-    renderAttribute(browserElement) {}
+    renderAttribute(browserElement) { }
 }
 class ModelAttribute extends Attribute {
     parse(options) {
         let eventCode = this.value + ' = node.value;this.update(\'' + this.value + '\');'
-        this.eventAttribute = new EventAttribute('(input)', eventCode, options)
+        this.eventAttribute = new EventAttribute('(change)', eventCode, options)
         this.expressionAttribute = new ExpressionAttribute('value', '{' + this.value + '}', options)
     }
     subscribe(element) {
@@ -1495,9 +1716,6 @@ class TextareaNodeAttribute extends Attribute {
         node.value = value;
     }
 }
-
-
-
 class ForAttribute extends Attribute {
     parse(options) {
         let arr = this.value.split(' of ');
@@ -1522,7 +1740,7 @@ class ForAttribute extends Attribute {
     }
 
     renderAttribute(browserElement, options) {
-        
+
         options.ignoreThis = true
         let collection = null;
         collection = this.expression.callWithElement(browserElement, options);
@@ -1535,7 +1753,7 @@ class ForAttribute extends Attribute {
         browserElement.children = []
         let lastEl = 0
 
-        if (collection) {
+        if (collection && browserElement.node.nodeType !== 8) {
             if (lastEl === 0) {
                 browserElement.node.innerHTML = "";
             }
@@ -1571,32 +1789,39 @@ Attribute.registerAttribute('for', ForAttribute);
 class IfAttribute extends Attribute {
     renderAttribute(browserElement, options) {
         if (this.ignoreThis === true) {
-            //   return This RETURN CAUSES SOME PROBLEMS,....
+            return; // RETURN MIGHT CAUSE PROBLEMS
         }
         this.ignoreThis = true;
+        
+        // Preserve the parent's forIdx context
+        const parentForIdx = browserElement.forIdx;
+        
         options.render = this.getRender(browserElement);
         if (options.render === true) {
             if (browserElement.node === null || browserElement.node.nodeType === 8) {
-                browserElement.render(options);
+                // Pass through the forIdx context when rendering
+                const newOptions = {...options, forIdx: parentForIdx};
+                browserElement.render(newOptions);
             }
-            //browserElement.render(options);
         } else {
             browserElement.unplace('if (' + this.expression.expression + ')');
         }
         this.ignoreThis = false;
     }
+
+    getRender(browserElement) {
+        return !!this.expression.callWithElement(browserElement);
+    }
+
     parse(options) {
         let newOptions = Object.assign({}, options, { jscontext: true })
         this.expression = new Expression(this.value, newOptions);
-    }
-    getRender(browserElement) {
-        return (this.expression.callWithElement(browserElement) == true);
     }
 }
 Attribute.registerAttribute('if', IfAttribute);
 class LastAttribute extends IfAttribute {
     parse(options) {
-        this.value = '('+options.currentCollection + '.length - 1) === ' + options.currentForIndex
+        this.value = '(' + options.currentCollection + '.length - 1) === ' + options.currentForIndex
         super.parse(options)
     }
 }
@@ -1615,18 +1840,23 @@ class ElementAttribute extends Attribute {
 }
 Attribute.registerAttribute('element', ElementAttribute);
 class LinkAttribute extends Attribute {
-    subscribe(browserElement) {
+    subscribe(browserElement, options) {
         let onEvent = function (event) {
             if (browserElement.link.startsWith('/'))
                 router$.goto(browserElement.link);
             else
                 router$.go(browserElement.link);
+            event.preventDefault();
+            event.stopPropagation();
         }.bind(this);
 
         browserElement.node.addEventListener('click', onEvent);
+        return super.subscribe(browserElement, options)
     }
     render(node, value, browserElement) {
         browserElement.link = value;
+        node.setAttribute('target', '_self')
+        node.setAttribute('href', value)
     }
 }
 Attribute.registerAttribute('link', LinkAttribute);
@@ -1637,24 +1867,54 @@ class IncludeTag extends Tag {
             this.browserElement = browserElement
         }
         if (this._tag) {
-            JJResource.loaded(this._tag).then(resource => {
+            Resource.loaded(this._tag).then(resource => {
                 this.renderedTag = TagModel.renderTag(this._tag, this.attributes, null, { tag: this.parentTag }, this.tagModel.events)
                 browserElement.node.innerHTML = ''
                 if (this.renderedTag) {
-                    browserElement.node.appendChild(this.renderedTag.node)
+                    if (browserElement.node.nodeType == 8) {
+                        browserElement.node.replaceWith(this.renderedTag.node)
+                        browserElement.node = this.renderedTag.node
+                    } else {
+                        browserElement.node.appendChild(this.renderedTag.node)
+                    }
                 }
+                if (this.renderedTag.tag) {
+                    Object.assign(this.renderedTag.tag, this.attributes)
+                }
+                this.fire('loaded', resource)
+
             });
         }
         return browserElement
     }
-    
+
     set tag(tag) {
+        if (this._tag == tag) {
+            return
+        }
+        if (this._tag != undefined && this._tag != tag) {
+            if (this.renderedTag != undefined) {
+                this.renderedTag.destroy()
+            }
+        }
+        if (!tag && this._tag) {
+            if (this.browserElement) {
+                this.browserElement.destroySubitems()
+                this.browserElement.node.innerHTML = ''
+                this._tag = undefined
+                return
+            }
+        }
         if (!tag || tag.toLowerCase() == this._tag) {
             return;
         }
         this._tag = tag.toLowerCase();
-        if (this.browserElement)
+        if (this.browserElement) {
             this.render(this.browserElement);
+            /*if (this.renderedTag) {
+                Object.assign(this.renderedTag.tag, this.attributes)
+            }*/
+        }
     }
     get tag() {
         return this._tag;
@@ -1662,7 +1922,7 @@ class IncludeTag extends Tag {
     set attributes(a) {
         this._attributes = a
         if (this.renderedTag && this.renderedTag.tag) {
-            Object.assign(this.renderedTag.tag,a)
+            Object.assign(this.renderedTag.tag, a)
         }
     }
     get attributes() {
@@ -1670,3 +1930,66 @@ class IncludeTag extends Tag {
     }
 }
 Tag.registerFrameworkTag('include', IncludeTag)
+window.translate = function (e) { return e; }
+window.handleError = function(resourceName,message, hash={}, editorView='vscode') {
+    if (resourceName+'.php' == hash.tab) {
+        hash.tab = 'php'
+    }
+    hash.message = message
+    hash = Object.keys(hash)
+        .map(key => `${key}=${encodeURIComponent(hash[key])}`)
+        .join(',');
+
+    hash = `#${hash}`;
+    
+    let errorLink;
+    if (Resource.wp) {
+        errorLink =  '/editor/resource/' + resourceName + '/'+editorView+hash
+    } else {
+        errorLink = 'https://static.metayota.com/editor/resource/' + resourceName + '/'+editorView+hash
+    }
+    let toast = { 'type': 'toast', 'message': 'Resource ' + resourceName + ': ' + message, sticky: true, 'button_name': 'Editor', 'link': errorLink}
+    if (window.toast$) {
+        toast$.display(toast)
+    } else {
+        if (!window.toasts) {
+            window.toasts = []
+        }
+        window.toasts.push(toast)
+        console.log("Resource '" + resourceName + "' produced an error: " + message);
+    }
+    window.parent.postMessage(toast , location.origin)
+    //console.error((resourceName) + ' - Error in Expression: "' + hash.codepoint + '" ')
+}
+function initializeFromHTML() {
+    const allElements = document.getElementsByTagName('*');
+    const elementsToProcess = [];
+    
+    // Collect registered tags
+    for (let i = 0; i < allElements.length; i++) {
+        const element = allElements[i];
+        const tagName = element.tagName.toLowerCase();
+        
+        if (Tag.isRegistered(tagName)) {
+            elementsToProcess.push(element);
+        }
+    }
+    
+    // Process each tag
+    for (let element of elementsToProcess) {
+        const tagName = element.tagName.toLowerCase();
+        
+        // Create and parse model element to handle expressions
+        const modelElement = new ModelElement();
+        modelElement.parse(element, {});
+        
+        Tag.ready(tagName).then(result => {
+            let renderedTag = modelElement.render({ tag: null });
+            
+            // Replace the original element
+            if (renderedTag && renderedTag.node) {
+                element.replaceWith(renderedTag.node);
+            }
+        });
+    }
+}
