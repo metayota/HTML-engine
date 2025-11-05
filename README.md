@@ -3,10 +3,10 @@
 JavaScript framework to create web applications
 
 # METAYOTA HTML engine documentation
-https://www.metayota.com/page/documentation-metayota-html-engine
+https://metayota.com/page/documentation-metayota-html-engine
 
-# METAYOTA documentation
-https://www.metayota.com/documentation
+# Metayota documentation
+https://metayota.com/documentation
 
-# METAYOTA LLC company website
-https://www.metayota.com/
+# Metayota Corp. - Official Company Website
+https://metayota.com/
